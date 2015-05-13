@@ -1,0 +1,10 @@
+syntax = "proto2";
+package messages;
+
+message IntervalRequest {
+    required int32 point = 1;
+}
+
+message IntervalResponse {
+    repeated int32 points  = 1;
+}

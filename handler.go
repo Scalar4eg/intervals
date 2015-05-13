@@ -3,52 +3,53 @@ import (
     "net"
     "log"
     "bufio"
-    "strconv"
-    "strings"
-    "encoding/json"
     "github.com/bo0rsh201/intervals/common"
     "bytes"
     "fmt"
+	"github.com/golang/protobuf/proto"
+	"github.com/bo0rsh201/intervals/proto"
 )
 
 func handleConnection(conn net.Conn) {
     defer conn.Close()
 
-    reader := bufio.NewReader(conn)
-    req_str, err := reader.ReadString('\n')
-    if err != nil {
-        log.Print(err)
-        return
-    }
+	var request = new(messages.IntervalRequest)
 
-    dst, err := strconv.Atoi(strings.TrimRight(req_str, "\n\r"))
-    if err != nil {
-        log.Print(err)
-        return
-    }
+	bufSlice := make([]byte, 4096)
+	buf := proto.NewBuffer(bufSlice)
+
+	err := buf.Unmarshal(request)
+	if err != nil {
+		log.Print(err)
+		return
+	}
+
     var debugBuffer bytes.Buffer
-    debugBuffer.WriteString(fmt.Sprintf("Got request for %d\nResults:\n", dst))
+    debugBuffer.WriteString(fmt.Sprintf("Got request for %d\nResults:\n", request.Point))
+
     mutex.RLock()
-    matches := Data.Get(common.IntInterval{Start: dst, End: dst})
+    matches := Data.Get(common.IntInterval{Start: int(*request.Point), End: int(*request.Point)})
     mutex.RUnlock()
-    result := make([]uintptr, len(matches))
-    i := 0
+
+	var response = new(messages.IntervalResponse)
     for _, match := range matches {
+		response.Points = append(response.Points, int32(match.ID()))
         debugBuffer.WriteString(fmt.Sprintf("Id: %d Range: %d - %d\n", match.ID(), match.Range().Start, match.Range().End))
-        result[i] = match.ID()
-        i++
     }
     debugBuffer.WriteString("\n")
-    json_bytes, err := json.Marshal(result)
+
+	err = buf.Marshal(response)
     if err != nil {
         log.Print(err)
         return
     }
 
-    _, err = conn.Write(append(json_bytes, '\n'))
-    if err != nil {
-        log.Print(err)
-        return
-    }
+	writer := bufio.NewWriter(conn)
+
+	_, err = writer.Write(buf.Bytes())
+	if err != nil {
+		log.Print(err)
+	}
+
     fmt.Print(debugBuffer.String())
 }
