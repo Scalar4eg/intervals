@@ -51,7 +51,7 @@ func initialLoad() error {
 }
 
 func main() {
-
+    
     log.Println("Initial load")
     err := initialLoad()
     if err != nil {
