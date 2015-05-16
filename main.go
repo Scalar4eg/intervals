@@ -10,6 +10,7 @@ import (
     "syscall"
     "net"
     "fmt"
+    "strconv"
 )
 
 var mutex sync.RWMutex = sync.RWMutex{}
@@ -51,7 +52,18 @@ func initialLoad() error {
 }
 
 func main() {
-    
+
+    if len(os.Args) > 2  {
+        if os.Args[1] == "test" {
+            n, err := strconv.Atoi(os.Args[2])
+            if err != nil {
+                log.Fatal(err)
+            }
+            TestClient(int32(n))
+        }
+        return
+    }
+
     log.Println("Initial load")
     err := initialLoad()
     if err != nil {

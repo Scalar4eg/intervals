@@ -46,7 +46,7 @@ func ReadMessage(r io.Reader, m proto.Message) (err error) {
 		return err
 	}
 	messageBytes := make([]byte, messageLen)
-	_, err = r.Read(messageBytes)
+	_, err = io.ReadFull(r, messageBytes)
 	if err != nil {
 		return err
 	}
