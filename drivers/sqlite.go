@@ -8,6 +8,8 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/bo0rsh201/intervals/common"
+	"sync"
+	"log"
 )
 
 type Sqlite struct {
@@ -33,15 +35,16 @@ func (p *Sqlite) Init(section ini.Section) error {
 	return nil
 }
 
-func (driver Sqlite) Load() (tree interval.IntTree, err error) {
+func (driver Sqlite) loadChunk(lock *sync.Mutex, t *interval.IntTree, start int ,limit int) error {
 	db, err := sql.Open("sqlite3", driver.file)
 	if err != nil {
-		return tree, err
+		return err
 	}
 	defer db.Close()
-	rows, err := db.Query(fmt.Sprintf("SELECT * FROM %s", driver.table))
+
+	rows, err := db.Query(fmt.Sprintf("SELECT * FROM %s LIMIT %d OFFSET %d", driver.table, limit, start))
 	if err != nil {
-		return tree, err
+		return err
 	}
 	defer rows.Close()
 
@@ -50,13 +53,57 @@ func (driver Sqlite) Load() (tree interval.IntTree, err error) {
 		var id int
 		err := rows.Scan(&id, &iv.Start, &iv.End)
 		if err != nil {
-			return tree, err
+			return err
 		}
 		iv.Id = uintptr(id)
-		err = tree.Insert(iv, false)
+		lock.Lock()
+		err = t.Insert(iv, false)
+		lock.Unlock()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (driver Sqlite) Load() (tree interval.IntTree, err error) {
+	var count int
+	db, err := sql.Open("sqlite3", driver.file)
+	if err != nil {
+		return tree, err
+	}
+	defer db.Close()
+	row := db.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s", driver.table))
+	if err != nil {
+		return tree, err
+	}
+
+	err = row.Scan(&count)
+	if err != nil {
+		return tree, err
+	}
+
+	lock := &sync.Mutex{}
+
+	workerCount := int(count / 10)
+
+	resChan := make(chan error)
+	threadCount := 0
+	for i:=0; i < count; i = i + workerCount {
+		threadCount++
+		go func(start int) {
+			log.Printf("start %d:%d threads=%d", start, workerCount, threadCount)
+			resChan <- driver.loadChunk(lock, &tree, start, workerCount)
+		}(i)
+	}
+	for threadCount > 0 {
+		err := <-resChan
+		threadCount--
+		log.Printf("done threads=%d", threadCount)
 		if err != nil {
 			return tree, err
 		}
 	}
+
 	return tree, nil
 }
